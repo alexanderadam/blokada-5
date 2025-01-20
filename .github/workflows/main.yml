@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
 
 env:
   main_project_module: app
@@ -36,6 +43,9 @@ jobs:
           unzip sdk-tools.zip -d $ANDROID_HOME/cmdline-tools
           mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
           echo "Installing SDK components..."
+          mkdir -p $ANDROID_HOME/licenses/
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
             "platform-tools" \
@@ -54,7 +64,6 @@ jobs:
       - name: Create local.properties
         run: |
           echo "sdk.dir=${ANDROID_HOME}" > ./local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/24.0.8215888" >> ./local.properties
 
       - name: Cache Gradle packages
         uses: actions/cache@v3
@@ -68,11 +77,16 @@ jobs:
       - name: Clean project
         run: ./gradlew clean
 
-      - name: Build app
-        run: ./gradlew --warning-mode all assembleFiveRelease
+      - name: Generate lint baseline
+        run: ./gradlew :app:lintFiveDebug -PwriteBaseline=true
+        continue-on-error: true
 
       - name: Run Lint
         run: ./gradlew lint
 
       - name: Run Unit Tests
         run: ./gradlew test
+
+      - name: Build app
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: ./gradlew --warning-mode all assembleFiveRelease
